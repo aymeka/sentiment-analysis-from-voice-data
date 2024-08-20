@@ -4,14 +4,15 @@ import sounddevice as sd
 import joblib
 import logging
 from sklearn.impute import SimpleImputer
+from scipy import stats
 from sklearn.feature_selection import SelectKBest, f_classif
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-model = joblib.load(r'C:\Users\emotion_model.pkl')
-label_encoder = joblib.load(r'C:\Users\label_encoder.pkl')
-scaler = joblib.load(r'C:\Users\scaler.pkl')
-selector = joblib.load(r'C:\Users\feature_selector.pkl')
+model = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\emotion_model.pkl')
+label_encoder = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\label_encoder.pkl')
+scaler = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\scaler.pkl')
+selector = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\feature_selector.pkl')
 
 def record_audio(duration=5, fs=22050):
     try:
@@ -75,41 +76,78 @@ def extract_features_from_audio(audio, sr=22050):
         pitch = np.mean(pitches[pitches > 0]) if np.any(pitches > 0) else 0
         features.append(pitch)
 
+        # Ekstra Özellikler
+        features.append(np.max(features))  # Max
+        features.append(np.min(features))  # Min
+        features.append(np.mean(features))  # Mean
+        features.append(np.ptp(features))  # Peak-to-Peak (range)
+
+        # Regresyon
+        x = np.arange(len(features))
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x, features)
+        features.append(slope)
+        features.append(intercept)
+
+        # Momentler
+        features.append(np.var(features))  # Variance
+        features.append(np.std(features))  # Standard deviation
+        features.append(stats.skew(features))  # Skewness
+        features.append(stats.kurtosis(features))  # Kurtosis
+
+        # Yüzdelikler
+        features.append(np.percentile(features, 25))  # 25th percentile
+        features.append(np.percentile(features, 50))  # Median (50th percentile)
+        features.append(np.percentile(features, 75))  # 75th percentile
+
         return np.array(features)
     except Exception as e:
         logging.error(f"Error during feature extraction: {e}")
         return None
 
-def predict_emotion(features):
+def segment_audio(audio, segment_length=0.02, sr=22050):
+    segment_samples = int(segment_length * sr)
+    num_segments = len(audio) // segment_samples
+    segments = [audio[i*segment_samples:(i+1)*segment_samples] for i in range(num_segments)]
+    return segments
+
+def extract_features_from_segments(segments, sr=22050):
+    all_features = []
+    for segment in segments:
+        features = extract_features_from_audio(segment, sr=sr)
+        if features is not None:
+            all_features.append(features)
+    return np.array(all_features)
+
+def predict_emotions_from_segments(features_segments):
+    predictions = []
     try:
         imputer = SimpleImputer(strategy='mean')
-        features_imputed = imputer.fit_transform(features.reshape(1, -1))
-
-        features_normalized = scaler.transform(features_imputed)
-
-        features_selected = selector.transform(features_normalized)
-
-        predicted_label = model.predict(features_selected)
-        predicted_emotion = label_encoder.inverse_transform(predicted_label)
-
-        return predicted_emotion[0]
+        for features in features_segments:
+            features_imputed = imputer.fit_transform(features.reshape(1, -1))
+            features_normalized = scaler.transform(features_imputed)
+            features_selected = selector.transform(features_normalized)
+            predicted_label = model.predict(features_selected)
+            predicted_emotion = label_encoder.inverse_transform(predicted_label)
+            predictions.append(predicted_emotion[0])
     except Exception as e:
         logging.error(f"Error during prediction: {e}")
-        return None
+    return predictions
 
 def main():
     duration = 5
     audio = record_audio(duration=duration)
     if audio is not None:
-        features = extract_features_from_audio(audio)
-        if features is not None:
-            predicted_emotion = predict_emotion(features)
-            if predicted_emotion:
-                print(f"Predicted Emotion: {predicted_emotion}")
+        segments = segment_audio(audio, segment_length=0.02)
+        features_segments = extract_features_from_segments(segments)
+        if features_segments.size > 0:
+            predicted_emotions = predict_emotions_from_segments(features_segments)
+            if predicted_emotions:
+                most_common_emotion = max(set(predicted_emotions), key=predicted_emotions.count)
+                print(f"Predicted Emotion: {most_common_emotion}")
             else:
                 print("Error predicting emotion.")
         else:
-            print("Error extracting features.")
+            print("Error extracting features from segments.")
     else:
         print("Error recording audio.")
 
