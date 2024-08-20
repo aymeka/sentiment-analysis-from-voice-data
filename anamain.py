@@ -8,10 +8,10 @@ from sklearn.feature_selection import SelectKBest, f_classif
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-model = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\emotion_model.pkl')
-label_encoder = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\label_encoder.pkl')
-scaler = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\scaler.pkl')
-selector = joblib.load(r'C:\Users\karad\Desktop\duyguanalizi\feature_selector.pkl')
+model = joblib.load(r'C:\Users\emotion_model.pkl')
+label_encoder = joblib.load(r'C:\Users\label_encoder.pkl')
+scaler = joblib.load(r'C:\Users\scaler.pkl')
+selector = joblib.load(r'C:\Users\feature_selector.pkl')
 
 def record_audio(duration=5, fs=22050):
     try:
