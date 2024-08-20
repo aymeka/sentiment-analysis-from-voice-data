@@ -80,7 +80,7 @@ def extract_features(file_name):
         logging.error(f"Error processing {file_name}: {e}")
         return None
 
-audio_files_path = r'C:\Users\karad\Desktop\duyguanalizi\sesler'
+audio_files_path = r'C:\Users\voice'
 features = []
 labels = []
 
@@ -171,10 +171,10 @@ plt.ylabel('True')
 plt.savefig(r'C:\Users\karad\Desktop\duyguanalizi\confusion_matrix.png')
 plt.close()
 
-joblib.dump(random_search, r'C:\Users\karad\Desktop\duyguanalizi\emotion_model.pkl')
-joblib.dump(label_encoder, r'C:\Users\karad\Desktop\duyguanalizi\label_encoder.pkl')
-joblib.dump(scaler, r'C:\Users\karad\Desktop\duyguanalizi\scaler.pkl')
-joblib.dump(selector, r'C:\Users\karad\Desktop\duyguanalizi\feature_selector.pkl')
+joblib.dump(random_search, r'C:\Users\emotion_model.pkl')
+joblib.dump(label_encoder, r'C:\Users\label_encoder.pkl')
+joblib.dump(scaler, r'C:\Users\scaler.pkl')
+joblib.dump(selector, r'C:\Users\feature_selector.pkl')
 
 class_distribution = np.bincount(y_resampled)
 class_names = label_encoder.classes_
@@ -184,7 +184,7 @@ plt.bar(class_names, class_distribution)
 plt.title('Class Distribution')
 plt.xlabel('Emotion')
 plt.ylabel('Count')
-plt.savefig(r'C:\Users\karad\Desktop\duyguanalizi\class_distribution.png')
+plt.savefig(r'C:\Users\class_distribution.png')
 plt.close()
 
 tsne = TSNE(n_components=2, random_state=42)
