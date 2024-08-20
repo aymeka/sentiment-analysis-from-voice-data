@@ -9,6 +9,7 @@ from sklearn.metrics import classification_report, accuracy_score, confusion_mat
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import SelectKBest, f_classif
 from imblearn.over_sampling import SMOTE
+from scipy import stats
 from tqdm import tqdm
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -23,64 +24,98 @@ logging.basicConfig(filename='audio_processing.log', level=logging.INFO)
 def get_label(file_name):
     return os.path.basename(file_name).split('_')[-1].split('.')[0]
 
-def extract_features(file_name):
-    try:
-        y, sr = librosa.load(file_name, duration=8)
-        features = []
+def extract_features(y, sr):
+    features = []
 
-        # MFCC
-        mfccs = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40).T, axis=0)
-        features.extend(mfccs)
+    # MFCC
+    mfccs = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=40).T, axis=0)
+    features.extend(mfccs)
 
-        # Spectral Centroid
-        spectral_centroids = np.mean(librosa.feature.spectral_centroid(y=y, sr=sr).T, axis=0)
-        features.extend(spectral_centroids)
+    # Spectral Centroid
+    spectral_centroids = np.mean(librosa.feature.spectral_centroid(y=y, sr=sr).T, axis=0)
+    features.extend(spectral_centroids)
 
-        # Spectral Contrast
-        spectral_contrast = np.mean(librosa.feature.spectral_contrast(y=y, sr=sr).T, axis=0)
-        features.extend(spectral_contrast)
+    # Spectral Contrast
+    spectral_contrast = np.mean(librosa.feature.spectral_contrast(y=y, sr=sr).T, axis=0)
+    features.extend(spectral_contrast)
 
-        # Chroma Features
-        chroma = np.mean(librosa.feature.chroma_stft(y=y, sr=sr).T, axis=0)
-        features.extend(chroma)
+    # Chroma Features
+    chroma = np.mean(librosa.feature.chroma_stft(y=y, sr=sr).T, axis=0)
+    features.extend(chroma)
 
-        # Zero Crossing Rate
-        zcr = np.mean(librosa.feature.zero_crossing_rate(y).T, axis=0)
-        features.extend(zcr)
+    # Zero Crossing Rate
+    zcr = np.mean(librosa.feature.zero_crossing_rate(y).T, axis=0)
+    features.extend(zcr)
 
-        # Spectral Rolloff
-        rolloff = np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr).T, axis=0)
-        features.extend(rolloff)
+    # Spectral Rolloff
+    rolloff = np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr).T, axis=0)
+    features.extend(rolloff)
 
-        # Spectral Flux
-        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-        spectral_flux = np.mean(onset_env)
-        features.append(spectral_flux)
+    # Spectral Flux
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+    spectral_flux = np.mean(onset_env)
+    features.append(spectral_flux)
 
-        # Harmonic-to-Noise Ratio (HNR)
-        harmonic, percussive = librosa.effects.hpss(y)
-        hnr = np.mean(librosa.effects.harmonic(y) / (np.abs(percussive) + 1e-6))
-        features.append(hnr)
+    # Harmonic-to-Noise Ratio (HNR)
+    harmonic, percussive = librosa.effects.hpss(y)
+    hnr = np.mean(librosa.effects.harmonic(y) / (np.abs(percussive) + 1e-6))
+    features.append(hnr)
 
-        # Energy
-        energy = np.mean(librosa.feature.rms(y=y).T, axis=0)
-        features.extend(energy)
+    # Energy
+    energy = np.mean(librosa.feature.rms(y=y).T, axis=0)
+    features.extend(energy)
 
-        # Root Mean Square Energy (RMS Energy)
-        rms = np.mean(librosa.feature.rms(y=y).T, axis=0)
-        features.extend(rms)
+    # Root Mean Square Energy (RMS Energy)
+    rms = np.mean(librosa.feature.rms(y=y).T, axis=0)
+    features.extend(rms)
 
-        # Pitch
-        pitches, magnitudes = librosa.core.piptrack(y=y, sr=sr)
-        pitch = np.mean(pitches[pitches > 0]) if np.any(pitches > 0) else 0
-        features.append(pitch)
+    # Pitch
+    pitches, magnitudes = librosa.core.piptrack(y=y, sr=sr)
+    pitch = np.mean(pitches[pitches > 0]) if np.any(pitches > 0) else 0
+    features.append(pitch)
 
-        return np.array(features)
-    except Exception as e:
-        logging.error(f"Error processing {file_name}: {e}")
-        return None
+    # Functional Features
+    # Extremes
+    features.append(np.max(features))
+    features.append(np.min(features))
+    features.append(np.mean(features))
+    features.append(np.ptp(features))  # Peak-to-peak (range)
 
-audio_files_path = r'C:\Users\voice'
+    # Regression
+    x = np.arange(len(features))
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, features)
+    features.append(slope)
+    features.append(intercept)
+
+    # Moments
+    features.append(np.var(features))  # Variance
+    features.append(np.std(features))  # Standard deviation
+    features.append(stats.skew(features))  # Skewness
+    features.append(stats.kurtosis(features))  # Kurtosis
+
+    # Percentiles
+    features.append(np.percentile(features, 25))  # 25th percentile
+    features.append(np.percentile(features, 50))  # Median (50th percentile)
+    features.append(np.percentile(features, 75))  # 75th percentile
+
+    return np.array(features)
+
+def process_audio_file(file_name, segment_duration=0.02):
+    y, sr = librosa.load(file_name, sr=None)
+    segment_length = int(sr * segment_duration)
+    features = []
+    labels = []
+
+    for start in range(0, len(y) - segment_length + 1, segment_length):
+        segment = y[start:start + segment_length]
+        features_extracted = extract_features(segment, sr)
+        if features_extracted is not None:
+            features.append(features_extracted)
+            labels.append(get_label(file_name))
+
+    return features, labels
+
+audio_files_path = r'C:\Users\karad\Desktop\emotion\pythonProject\testsesler'
 features = []
 labels = []
 
@@ -88,11 +123,9 @@ for root, _, filenames in os.walk(audio_files_path):
     for file_name in tqdm(filenames, desc="Processing audio files"):
         if file_name.endswith('.wav'):
             full_path = os.path.join(root, file_name)
-            label = get_label(full_path)
-            features_extracted = extract_features(full_path)
-            if features_extracted is not None:
-                features.append(features_extracted)
-                labels.append(label)
+            features_extracted, labels_extracted = process_audio_file(full_path)
+            features.extend(features_extracted)
+            labels.extend(labels_extracted)
 
 feature_lengths = [len(f) for f in features]
 if len(set(feature_lengths)) > 1:
@@ -168,13 +201,13 @@ sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=label_encoder.cla
 plt.title('Confusion Matrix')
 plt.xlabel('Predicted')
 plt.ylabel('True')
-plt.savefig(r'C:\Users\karad\Desktop\duyguanalizi\confusion_matrix.png')
+plt.savefig(r'C:\Users\karad\Desktop\emotion\pythonProject\confusion_matrix.png')
 plt.close()
 
-joblib.dump(random_search, r'C:\Users\emotion_model.pkl')
-joblib.dump(label_encoder, r'C:\Users\label_encoder.pkl')
-joblib.dump(scaler, r'C:\Users\scaler.pkl')
-joblib.dump(selector, r'C:\Users\feature_selector.pkl')
+joblib.dump(random_search, r'C:\Users\karad\Desktop\emotion\pythonProject\emotion_model.pkl')
+joblib.dump(label_encoder, r'C:\Users\karad\Desktop\emotion\pythonProject\label_encoder.pkl')
+joblib.dump(scaler, r'C:\Users\karad\Desktop\emotion\pythonProject\scaler.pkl')
+joblib.dump(selector, r'C:\Users\karad\Desktop\emotion\pythonProject\feature_selector.pkl')
 
 class_distribution = np.bincount(y_resampled)
 class_names = label_encoder.classes_
@@ -184,7 +217,7 @@ plt.bar(class_names, class_distribution)
 plt.title('Class Distribution')
 plt.xlabel('Emotion')
 plt.ylabel('Count')
-plt.savefig(r'C:\Users\class_distribution.png')
+plt.savefig(r'C:\Users\karad\Desktop\emotion\pythonProject\class_distribution.png')
 plt.close()
 
 tsne = TSNE(n_components=2, random_state=42)
@@ -194,5 +227,5 @@ plt.figure(figsize=(10, 8))
 scatter = plt.scatter(X_tsne[:, 0], X_tsne[:, 1], c=y_resampled, cmap='viridis')
 plt.colorbar(scatter)
 plt.title('t-SNE visualization of the dataset')
-plt.savefig(r'C:\Users\karad\Desktop\duyguanalizi\tsne_visualization.png')
+plt.savefig(r'C:\Users\karad\Desktop\emotion\pythonProject\tsne_visualization.png')
 plt.close()
